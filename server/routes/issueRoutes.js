@@ -5,6 +5,8 @@ import {
   getIssues,
   getIssueById,
   updateIssueStatus,
+  getIssueAssignees,
+  assignIssue,
 } from "../controllers/issueController.js";
 import {
   protect,
