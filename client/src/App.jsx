@@ -1185,7 +1185,8 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
-      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
+      <div className="public-service-strip"><div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 sm:px-6 lg:px-8"><span>PUBLIC SERVICE PORTAL</span><span className="hidden sm:inline">Community reporting · Transparent issue tracking</span></div></div>
+      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-3">
             <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-700 text-white">
@@ -1194,7 +1195,7 @@ export default function App() {
             <div>
               <h1 className="text-xl font-bold tracking-tight">CivicPulse</h1>
               <p className="text-xs text-slate-500">
-                Community Issue Management
+                Public Grievance Redressal Portal
               </p>
             </div>
           </div>
@@ -1224,10 +1225,10 @@ export default function App() {
       </header>
 
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <section className="overflow-hidden rounded-3xl bg-slate-900 px-6 py-8 text-white sm:px-9 sm:py-10">
+        <section className="portal-intro overflow-hidden rounded-xl border border-slate-200 bg-white px-6 py-8 text-slate-900 sm:px-9 sm:py-10">
           <div className="flex flex-col justify-between gap-6 md:flex-row md:items-center">
             <div>
-              <p className="text-sm font-semibold uppercase tracking-widest text-emerald-400">
+              <p className="text-xs font-bold uppercase tracking-widest text-blue-800">
                 {isAdmin ? "Administration" : "Citizen dashboard"}
               </p>
               <h2 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">
@@ -1235,7 +1236,7 @@ export default function App() {
                   ? "Manage community issues."
                   : "Make your community better."}
               </h2>
-              <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300 sm:text-base">
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 sm:text-base">
                 {isAdmin
                   ? "Review reported problems, monitor progress, and keep citizens informed."
                   : "Report local problems and track every update from submission to resolution."}
@@ -1250,7 +1251,7 @@ export default function App() {
                   setSuccess("");
                   setShowReportForm(true);
                 }}
-                className="flex shrink-0 items-center justify-center gap-2 rounded-xl bg-emerald-500 px-5 py-3 font-semibold text-white hover:bg-emerald-400"
+                className="flex shrink-0 items-center justify-center gap-2 rounded-lg bg-blue-800 px-5 py-3 font-semibold text-white hover:bg-blue-900"
               >
                 <Plus size={19} />
                 Report an issue
@@ -1462,7 +1463,7 @@ export default function App() {
         </section>
 
         <footer className="mt-12 border-t border-slate-200 py-6 text-center text-xs text-slate-500">
-          CivicPulse · Community Issue Management
+          CivicPulse · Public Grievance Redressal Portal
         </footer>
       </main>
 
