@@ -5,6 +5,7 @@ import IssueMap from "./components/IssueMap";
 import {
   Activity,
   AlertCircle,
+  Bell,
   ArrowRight,
   CheckCircle2,
   Clock3,
@@ -128,7 +129,7 @@ function StatCard({ label, value, icon: Icon, description }) {
   );
 }
 
-function IssueCard({ issue, admin, onUpdateStatus, onView }) {
+function IssueCard({ issue, admin, assignees, onAssign, onUpdateStatus, onView }) {
   const [nextStatus, setNextStatus] = useState(issue.status || "reported");
   const [resolutionNote, setResolutionNote] = useState(
     issue.resolutionNote || ""
@@ -137,6 +138,8 @@ function IssueCard({ issue, admin, onUpdateStatus, onView }) {
   const [resolutionImagePreview, setResolutionImagePreview] = useState("");
   const [updating, setUpdating] = useState(false);
   const [updateError, setUpdateError] = useState("");
+  const [assignmentValue, setAssignmentValue] = useState(issue.assignedTo?._id || issue.assignedTo || "");
+  const [assigning, setAssigning] = useState(false);
 
   useEffect(() => {
     setNextStatus(issue.status || "reported");
@@ -227,7 +230,15 @@ function IssueCard({ issue, admin, onUpdateStatus, onView }) {
 
       {admin && (
         <div className="mt-5 border-t border-slate-100 pt-5">
-          <h4 className="text-sm font-bold text-slate-900">
+          <h4 className="text-sm font-bold text-slate-900">Assign issue</h4>
+          <div className="mt-2 flex gap-2">
+            <select value={assignmentValue} onChange={(event) => setAssignmentValue(event.target.value)} className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm">
+              <option value="">Unassigned</option>
+              {assignees.map((person) => <option key={person._id} value={person._id}>{person.name} ({person.email})</option>)}
+            </select>
+            <button type="button" disabled={assigning || assignmentValue === (issue.assignedTo?._id || issue.assignedTo || "")} onClick={async () => { setAssigning(true); setUpdateError(""); try { await onAssign(issue._id, assignmentValue || null); } catch (error) { setUpdateError(error.message || "Unable to assign issue."); } finally { setAssigning(false); } }} className="rounded-xl bg-emerald-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">{assigning ? "Saving..." : "Assign"}</button>
+          </div>
+          <h4 className="mt-5 text-sm font-bold text-slate-900">
             Manage issue status
           </h4>
           <label className="mt-3 block text-xs font-semibold text-slate-600">
@@ -677,6 +688,11 @@ export default function App() {
   const [issuesLoading, setIssuesLoading] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [mapCategoryFilter, setMapCategoryFilter] = useState("");
+  const [mapStatusFilter, setMapStatusFilter] = useState("");
+  const [mapPriorityFilter, setMapPriorityFilter] = useState("");
+  const [assignees, setAssignees] = useState([]);
+  const [showNotifications, setShowNotifications] = useState(false);
 
   const [showReportForm, setShowReportForm] = useState(false);
   const [reportBusy, setReportBusy] = useState(false);
@@ -767,6 +783,13 @@ export default function App() {
       setIssues([]);
     }
   }, [token, user, loadIssues]);
+
+  useEffect(() => {
+    if (!token || !isAdmin) { setAssignees([]); return; }
+    api.get("/api/issues/assignees", { headers: authHeaders })
+      .then((response) => setAssignees(response.data.users || []))
+      .catch(() => setAssignees([]));
+  }, [token, isAdmin, authHeaders]);
 
   useEffect(() => {
     return () => {
@@ -1023,6 +1046,13 @@ export default function App() {
     }
   }
 
+  async function assignIssue(issueId, assignedTo) {
+    const response = await api.patch(`/api/issues/${issueId}/assign`, { assignedTo }, { headers: authHeaders });
+    setSuccess(response.data.message || "Issue assignment updated.");
+    await loadIssues();
+    if (selectedIssue?._id === issueId) await viewIssue(issueId);
+  }
+
   async function viewIssue(issueId) {
     setDetailLoading(true);
     setError("");
@@ -1047,6 +1077,28 @@ export default function App() {
       setDetailLoading(false);
     }
   }
+
+  const mapFilteredIssues = useMemo(() => issues.filter((issue) =>
+    (!mapCategoryFilter || issue.category === mapCategoryFilter) &&
+    (!mapStatusFilter || issue.status === mapStatusFilter) &&
+    (!mapPriorityFilter || issue.priority === mapPriorityFilter)
+  ), [issues, mapCategoryFilter, mapStatusFilter, mapPriorityFilter]);
+
+  const categoryAnalytics = useMemo(() => CATEGORIES.map((category) => ({
+    category,
+    count: issues.filter((issue) => issue.category === category).length,
+  })), [issues]);
+
+  const notifications = useMemo(() => issues.flatMap((issue) => (issue.statusHistory || [])
+    .filter((entry) => entry.changedBy?._id !== user?.id && entry.changedBy?.toString?.() !== user?.id)
+    .map((entry, index) => ({
+      id: `${issue._id}-${entry._id || index}`,
+      title: issue.title,
+      note: entry.note || `Status changed to ${formatStatus(entry.status)}`,
+      date: entry.changedAt,
+      status: entry.status,
+    })))
+    .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)).slice(0, 8), [issues, user]);
 
   const stats = useMemo(
     () => ({
@@ -1102,6 +1154,13 @@ export default function App() {
             <div className="hidden text-right sm:block">
               <p className="text-sm font-semibold">{user.name}</p>
               <p className="text-xs capitalize text-slate-500">{user.role}</p>
+            </div>
+            <div className="relative">
+              <button type="button" onClick={() => setShowNotifications((value) => !value)} aria-label="Toggle notifications" className="relative rounded-xl border border-slate-200 p-2.5 text-slate-700 hover:bg-slate-50">
+                <Bell size={18} />
+                {notifications.length > 0 && <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white">{notifications.length}</span>}
+              </button>
+              {showNotifications && <div className="absolute right-0 z-[80] mt-2 w-[min(90vw,360px)] rounded-2xl border border-slate-200 bg-white p-4 shadow-xl"><div className="flex items-center justify-between"><h3 className="font-bold">Recent activity</h3><button type="button" onClick={() => setShowNotifications(false)} className="text-sm text-emerald-700">Close</button></div>{notifications.length ? <ul className="mt-3 max-h-80 space-y-3 overflow-y-auto">{notifications.map((item) => <li key={item.id} className="rounded-xl bg-slate-50 p-3"><p className="text-sm font-semibold">{item.title}</p><p className="mt-1 text-sm text-slate-600">{item.note}</p><p className="mt-1 text-xs text-slate-400">{formatDate(item.date)}</p></li>)}</ul> : <p className="mt-3 text-sm text-slate-500">No recent activity available.</p>}</div>}
             </div>
             <button
               type="button"
@@ -1208,11 +1267,22 @@ export default function App() {
           />
         </section>
 
-        <section className="mt-8">
-          <IssueMap
-            issues={issues}
-            onViewIssue={viewIssue}
-          />
+        <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-slate-700"><Filter size={17} /> Map filters</div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <select aria-label="Map category filter" value={mapCategoryFilter} onChange={(event) => setMapCategoryFilter(event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"><option value="">All categories</option>{CATEGORIES.map((item) => <option key={item} value={item}>{item}</option>)}</select>
+            <select aria-label="Map status filter" value={mapStatusFilter} onChange={(event) => setMapStatusFilter(event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"><option value="">All statuses</option>{STATUSES.map((item) => <option key={item} value={item}>{formatStatus(item)}</option>)}</select>
+            <select aria-label="Map priority filter" value={mapPriorityFilter} onChange={(event) => setMapPriorityFilter(event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"><option value="">All priorities</option>{PRIORITIES.map((item) => <option key={item} value={item}>{item.charAt(0).toUpperCase()+item.slice(1)}</option>)}</select>
+          </div>
+          <div className="mt-4"><IssueMap issues={mapFilteredIssues} onViewIssue={viewIssue} /></div>
+        </section>
+
+        <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div><h2 className="text-xl font-bold">Issue analytics</h2><p className="mt-1 text-sm text-slate-500">Overview based on the issues currently loaded for your account.</p></div>
+          <div className="mt-5 grid gap-6 lg:grid-cols-2">
+            <div><h3 className="mb-3 text-sm font-bold text-slate-700">Issues by category</h3><div className="space-y-3">{categoryAnalytics.map(({category,count}) => <div key={category}><div className="mb-1 flex justify-between text-xs"><span>{category}</span><span>{count}</span></div><div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-emerald-600" style={{width: `${issues.length ? (count / issues.length) * 100 : 0}%`}} /></div></div>)}</div>
+            <div><h3 className="mb-3 text-sm font-bold text-slate-700">Status breakdown</h3><div className="space-y-4">{STATUSES.map((status) => { const count = issues.filter((issue) => issue.status === status).length; const colors = {reported:"bg-blue-600","in-progress":"bg-amber-500",resolved:"bg-emerald-600",rejected:"bg-red-600"}; return <div key={status}><div className="mb-1 flex justify-between text-xs"><span>{formatStatus(status)}</span><span>{count}</span></div><div className="h-3 overflow-hidden rounded-full bg-slate-100"><div className={`h-full rounded-full ${colors[status]}`} style={{width: `${issues.length ? (count / issues.length) * 100 : 0}%`}} /></div></div>; })}</div></div>
+          </div>
         </section>
 
         <section className="mt-10">
@@ -1299,6 +1369,8 @@ export default function App() {
                   key={issue._id}
                   issue={issue}
                   admin={isAdmin}
+                  assignees={assignees}
+                  onAssign={assignIssue}
                   onUpdateStatus={updateIssueStatus}
                   onView={viewIssue}
                 />
