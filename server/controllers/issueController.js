@@ -1,28 +1,47 @@
-
 import mongoose from "mongoose";
 import Issue from "../models/Issue.js";
+import { findSimilarIssues } from "../utils/duplicateDetection.js";
 
 export const createIssue = async (req, res, next) => {
   try {
-    const {
-      title,
-      description,
-      category,
-      priority,
-      location,
-      imageUrl,
-    } = req.body;
+    const { title, description, category, priority, location, imageUrl } = req.body;
 
-    if (
-      !title?.trim() ||
-      !description?.trim() ||
-      !category ||
-      !location?.address?.trim()
-    ) {
+    if (!title?.trim() || !description?.trim() || !category || !location?.address?.trim()) {
       return res.status(400).json({
         success: false,
-        message:
-          "Title, description, category, and location address are required.",
+        message: "Title, description, category, and location address are required.",
+      });
+    }
+
+    if (location.coordinates !== undefined) {
+      const coordinates = location.coordinates;
+      if (
+        !Array.isArray(coordinates) ||
+        coordinates.length !== 2 ||
+        !coordinates.every((coordinate) => typeof coordinate === "number" && Number.isFinite(coordinate)) ||
+        coordinates[0] < -180 || coordinates[0] > 180 ||
+        coordinates[1] < -90 || coordinates[1] > 90
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Coordinates must be [longitude, latitude] with valid values.",
+        });
+      }
+    }
+
+    const similarIssues = await findSimilarIssues({
+      title: title.trim(),
+      description: description.trim(),
+      category,
+      coordinates: location.coordinates,
+    });
+
+    if (similarIssues.length > 0) {
+      return res.status(200).json({
+        success: true,
+        duplicateWarning: true,
+        message: "Similar open issues were found nearby.",
+        similarIssues,
       });
     }
 
@@ -33,21 +52,17 @@ export const createIssue = async (req, res, next) => {
       priority: priority || "medium",
       location: {
         address: location.address.trim(),
-        ...(Array.isArray(location.coordinates)
-          ? { coordinates: location.coordinates }
-          : {}),
+        ...(Array.isArray(location.coordinates) ? { coordinates: location.coordinates } : {}),
       },
       imageUrl: imageUrl || "",
       reportedBy: req.user._id,
       status: "reported",
-      statusHistory: [
-        {
-          status: "reported",
-          changedBy: req.user._id,
-          note: "Issue reported",
-          changedAt: new Date(),
-        },
-      ],
+      statusHistory: [{
+        status: "reported",
+        changedBy: req.user._id,
+        note: "Issue reported",
+        changedAt: new Date(),
+      }],
     });
 
     return res.status(201).json({
@@ -62,28 +77,14 @@ export const createIssue = async (req, res, next) => {
 
 export const getIssues = async (req, res, next) => {
   try {
-    const {
-      category,
-      status,
-      mine,
-      page = 1,
-      limit = 10,
-    } = req.query;
-
+    const { category, status, mine, page = 1, limit = 10 } = req.query;
     const filter = {};
-
     if (category) filter.category = category;
     if (status) filter.status = status;
-
-    if (mine === "true") {
-      filter.reportedBy = req.user._id;
-    }
+    if (mine === "true") filter.reportedBy = req.user._id;
 
     const pageNumber = Math.max(1, Number.parseInt(page, 10) || 1);
-    const pageSize = Math.min(
-      100,
-      Math.max(1, Number.parseInt(limit, 10) || 10)
-    );
+    const pageSize = Math.min(100, Math.max(1, Number.parseInt(limit, 10) || 10));
 
     const [issues, total] = await Promise.all([
       Issue.find(filter)
@@ -114,12 +115,8 @@ export const getIssues = async (req, res, next) => {
 export const getIssueById = async (req, res, next) => {
   try {
     const { id } = req.params;
-
     if (!mongoose.isValidObjectId(id)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid issue ID.",
-      });
+      return res.status(400).json({ success: false, message: "Invalid issue ID." });
     }
 
     const issue = await Issue.findById(id)
@@ -128,27 +125,17 @@ export const getIssueById = async (req, res, next) => {
       .populate("statusHistory.changedBy", "name role");
 
     if (!issue) {
-      return res.status(404).json({
-        success: false,
-        message: "Issue not found.",
-      });
+      return res.status(404).json({ success: false, message: "Issue not found." });
     }
 
-    // Citizens may only view their own issues; admins may view all issues.
-    if (
-      req.user.role !== "admin" &&
-      issue.reportedBy._id.toString() !== req.user._id.toString()
-    ) {
+    if (req.user.role !== "admin" && issue.reportedBy._id.toString() !== req.user._id.toString()) {
       return res.status(403).json({
         success: false,
         message: "You are not authorized to view this issue.",
       });
     }
 
-    return res.status(200).json({
-      success: true,
-      issue,
-    });
+    return res.status(200).json({ success: true, issue });
   } catch (error) {
     next(error);
   }
@@ -160,32 +147,19 @@ export const updateIssueStatus = async (req, res, next) => {
     const { status, note, resolutionNote, resolutionImageUrl } = req.body;
 
     if (!mongoose.isValidObjectId(id)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid issue ID.",
-      });
+      return res.status(400).json({ success: false, message: "Invalid issue ID." });
     }
 
-    if (
-      !["reported", "in-progress", "resolved", "rejected"].includes(status)
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid issue status.",
-      });
+    if (!["reported", "in-progress", "resolved", "rejected"].includes(status)) {
+      return res.status(400).json({ success: false, message: "Invalid issue status." });
     }
 
     const issue = await Issue.findById(id);
-
     if (!issue) {
-      return res.status(404).json({
-        success: false,
-        message: "Issue not found.",
-      });
+      return res.status(404).json({ success: false, message: "Issue not found." });
     }
 
     const finalResolutionNote = resolutionNote || note || "";
-
     if (status === "resolved" && !finalResolutionNote.trim()) {
       return res.status(400).json({
         success: false,
@@ -194,21 +168,16 @@ export const updateIssueStatus = async (req, res, next) => {
     }
 
     issue.status = status;
-
     if (status === "resolved") {
       issue.resolutionNote = finalResolutionNote.trim();
 
       if (resolutionImageUrl !== undefined) {
-        if (
-          typeof resolutionImageUrl !== "string" ||
-          !resolutionImageUrl.startsWith("https://")
-        ) {
+        if (typeof resolutionImageUrl !== "string" || !resolutionImageUrl.startsWith("https://")) {
           return res.status(400).json({
             success: false,
             message: "A valid resolution image URL is required.",
           });
         }
-
         issue.resolutionImageUrl = resolutionImageUrl;
       }
     }
