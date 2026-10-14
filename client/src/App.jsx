@@ -919,7 +919,12 @@ export default function App() {
         const uploadResponse = await api.post(
           "/api/uploads",
           uploadData,
-          { headers: authHeaders }
+          {
+            headers: {
+              ...authHeaders,
+              "Content-Type": undefined,
+            },
+          }
         );
 
         imageUrl = uploadResponse.data.imageUrl;
