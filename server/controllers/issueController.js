@@ -4,7 +4,7 @@ import { findSimilarIssues } from "../utils/duplicateDetection.js";
 
 export const createIssue = async (req, res, next) => {
   try {
-    const { title, description, category, priority, location, imageUrl } = req.body;
+    const { title, description, category, priority, location, imageUrl, allowDuplicate } = req.body;
 
     if (!title?.trim() || !description?.trim() || !category || !location?.address?.trim()) {
       return res.status(400).json({
@@ -29,20 +29,22 @@ export const createIssue = async (req, res, next) => {
       }
     }
 
-    const similarIssues = await findSimilarIssues({
-      title: title.trim(),
-      description: description.trim(),
-      category,
-      coordinates: location.coordinates,
-    });
-
-    if (similarIssues.length > 0) {
-      return res.status(200).json({
-        success: true,
-        duplicateWarning: true,
-        message: "Similar open issues were found nearby.",
-        similarIssues,
+    if (allowDuplicate !== true) {
+      const similarIssues = await findSimilarIssues({
+        title: title.trim(),
+        description: description.trim(),
+        category,
+        coordinates: location.coordinates,
       });
+
+      if (similarIssues.length > 0) {
+        return res.status(200).json({
+          success: true,
+          duplicateWarning: true,
+          message: "Similar open issues were found nearby.",
+          similarIssues,
+        });
+      }
     }
 
     const issue = await Issue.create({
