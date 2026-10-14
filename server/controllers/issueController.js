@@ -3,6 +3,7 @@ import Issue from "../models/Issue.js";
 import User from "../models/User.js";
 import Notification from "../models/Notification.js";
 import { findSimilarIssues } from "../utils/duplicateDetection.js";
+import { addSlaDetails } from "../utils/slaTracking.js";
 
 export const createIssue = async (req, res, next) => {
   try {
@@ -72,7 +73,7 @@ export const createIssue = async (req, res, next) => {
     return res.status(201).json({
       success: true,
       message: "Issue reported successfully.",
-      issue,
+      issue: addSlaDetails(issue.toObject()),
     });
   } catch (error) {
     next(error);
@@ -103,7 +104,7 @@ export const getIssues = async (req, res, next) => {
 
     return res.status(200).json({
       success: true,
-      issues,
+      issues: issues.map((issue) => addSlaDetails(issue)),
       pagination: {
         total,
         page: pageNumber,
@@ -139,7 +140,7 @@ export const getIssueById = async (req, res, next) => {
       });
     }
 
-    return res.status(200).json({ success: true, issue });
+    return res.status(200).json({ success: true, issue: addSlaDetails(issue.toObject()) });
   } catch (error) {
     next(error);
   }
@@ -213,7 +214,7 @@ export const updateIssueStatus = async (req, res, next) => {
     return res.status(200).json({
       success: true,
       message: "Issue status updated successfully.",
-      issue: updatedIssue,
+      issue: addSlaDetails(updatedIssue.toObject()),
     });
   } catch (error) {
     next(error);
