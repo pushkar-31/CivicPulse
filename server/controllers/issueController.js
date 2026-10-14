@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import Issue from "../models/Issue.js";
+import User from "../models/User.js";
 import { findSimilarIssues } from "../utils/duplicateDetection.js";
 
 export const createIssue = async (req, res, next) => {
@@ -201,6 +202,69 @@ export const updateIssueStatus = async (req, res, next) => {
     return res.status(200).json({
       success: true,
       message: "Issue status updated successfully.",
+      issue: updatedIssue,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+export const getIssueAssignees = async (req, res, next) => {
+  try {
+    const users = await User.find({ role: "citizen" })
+      .select("name email")
+      .sort({ name: 1 })
+      .lean();
+
+    return res.status(200).json({ success: true, users });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const assignIssue = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { assignedTo } = req.body;
+
+    if (!mongoose.isValidObjectId(id)) {
+      return res.status(400).json({ success: false, message: "Invalid issue ID." });
+    }
+
+    if (assignedTo !== null && !mongoose.isValidObjectId(assignedTo)) {
+      return res.status(400).json({ success: false, message: "Choose a valid assignee." });
+    }
+
+    const issue = await Issue.findById(id);
+    if (!issue) {
+      return res.status(404).json({ success: false, message: "Issue not found." });
+    }
+
+    if (assignedTo) {
+      const user = await User.findOne({ _id: assignedTo, role: "citizen" }).select("_id");
+      if (!user) {
+        return res.status(400).json({ success: false, message: "Assignee not found." });
+      }
+    }
+
+    issue.assignedTo = assignedTo || null;
+    issue.statusHistory.push({
+      status: issue.status,
+      changedBy: req.user._id,
+      note: assignedTo ? "Issue assigned to a team member" : "Issue assignment removed",
+      changedAt: new Date(),
+    });
+    await issue.save();
+
+    const updatedIssue = await Issue.findById(issue._id)
+      .populate("reportedBy", "name email")
+      .populate("assignedTo", "name email")
+      .populate("statusHistory.changedBy", "name role");
+
+    return res.status(200).json({
+      success: true,
+      message: assignedTo ? "Issue assigned successfully." : "Issue unassigned successfully.",
       issue: updatedIssue,
     });
   } catch (error) {
