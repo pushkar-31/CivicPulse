@@ -693,6 +693,8 @@ export default function App() {
   const [mapPriorityFilter, setMapPriorityFilter] = useState("");
   const [assignees, setAssignees] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   const [showReportForm, setShowReportForm] = useState(false);
   const [reportBusy, setReportBusy] = useState(false);
@@ -784,6 +786,22 @@ export default function App() {
     }
   }, [token, user, loadIssues]);
 
+  const loadNotifications = useCallback(async () => {
+    if (!token || !user) { setNotifications([]); setUnreadCount(0); return; }
+    try {
+      const response = await api.get("/api/notifications", { headers: authHeaders });
+      setNotifications(response.data.notifications || []);
+      setUnreadCount(response.data.unreadCount || 0);
+    } catch {
+      setNotifications([]);
+      setUnreadCount(0);
+    }
+  }, [token, user, authHeaders]);
+
+  useEffect(() => {
+    loadNotifications();
+  }, [loadNotifications]);
+
   useEffect(() => {
     if (!token || !isAdmin) { setAssignees([]); return; }
     api.get("/api/issues/assignees", { headers: authHeaders })
@@ -839,6 +857,8 @@ export default function App() {
     setUser(null);
     setIssues([]);
     setSelectedIssue(null);
+    setNotifications([]);
+    setUnreadCount(0);
     setShowReportForm(false);
     setError("");
     setSuccess("");
@@ -1046,6 +1066,16 @@ export default function App() {
     }
   }
 
+  async function markNotificationRead(notificationId) {
+    await api.patch(`/api/notifications/${notificationId}/read`, {}, { headers: authHeaders });
+    await loadNotifications();
+  }
+
+  async function markAllNotificationsRead() {
+    await api.patch("/api/notifications/read-all", {}, { headers: authHeaders });
+    await loadNotifications();
+  }
+
   async function assignIssue(issueId, assignedTo) {
     const response = await api.patch(`/api/issues/${issueId}/assign`, { assignedTo }, { headers: authHeaders });
     setSuccess(response.data.message || "Issue assignment updated.");
@@ -1088,17 +1118,6 @@ export default function App() {
     category,
     count: issues.filter((issue) => issue.category === category).length,
   })), [issues]);
-
-  const notifications = useMemo(() => issues.flatMap((issue) => (issue.statusHistory || [])
-    .filter((entry) => entry.changedBy?._id !== user?.id && entry.changedBy?.toString?.() !== user?.id)
-    .map((entry, index) => ({
-      id: `${issue._id}-${entry._id || index}`,
-      title: issue.title,
-      note: entry.note || `Status changed to ${formatStatus(entry.status)}`,
-      date: entry.changedAt,
-      status: entry.status,
-    })))
-    .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)).slice(0, 8), [issues, user]);
 
   const stats = useMemo(
     () => ({
@@ -1158,9 +1177,9 @@ export default function App() {
             <div className="relative">
               <button type="button" onClick={() => setShowNotifications((value) => !value)} aria-label="Toggle notifications" className="relative rounded-xl border border-slate-200 p-2.5 text-slate-700 hover:bg-slate-50">
                 <Bell size={18} />
-                {notifications.length > 0 && <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white">{notifications.length}</span>}
+                {unreadCount > 0 && <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white">{unreadCount > 99 ? "99+" : unreadCount}</span>}
               </button>
-              {showNotifications && <div className="absolute right-0 z-[80] mt-2 w-[min(90vw,360px)] rounded-2xl border border-slate-200 bg-white p-4 shadow-xl"><div className="flex items-center justify-between"><h3 className="font-bold">Recent activity</h3><button type="button" onClick={() => setShowNotifications(false)} className="text-sm text-emerald-700">Close</button></div>{notifications.length ? <ul className="mt-3 max-h-80 space-y-3 overflow-y-auto">{notifications.map((item) => <li key={item.id} className="rounded-xl bg-slate-50 p-3"><p className="text-sm font-semibold">{item.title}</p><p className="mt-1 text-sm text-slate-600">{item.note}</p><p className="mt-1 text-xs text-slate-400">{formatDate(item.date)}</p></li>)}</ul> : <p className="mt-3 text-sm text-slate-500">No recent activity available.</p>}</div>}
+              {showNotifications && <div className="absolute right-0 z-[80] mt-2 w-[min(90vw,380px)] rounded-2xl border border-slate-200 bg-white p-4 shadow-xl"><div className="flex items-center justify-between gap-3"><h3 className="font-bold">Notifications</h3><button type="button" onClick={() => setShowNotifications(false)} className="text-sm text-emerald-700">Close</button></div><div className="mt-2 flex items-center justify-between"><span className="text-xs text-slate-500">{unreadCount} unread</span><button type="button" disabled={!unreadCount} onClick={markAllNotificationsRead} className="text-xs font-semibold text-emerald-700 disabled:opacity-40">Mark all as read</button></div>{notifications.length ? <ul className="mt-3 max-h-80 space-y-2 overflow-y-auto">{notifications.map((item) => <li key={item._id} className={`rounded-xl border p-3 ${item.readAt ? "border-slate-100 bg-white" : "border-emerald-100 bg-emerald-50"}`}><button type="button" onClick={async () => { try { if (!item.readAt) await markNotificationRead(item._id); setShowNotifications(false); if (item.issue?._id) await viewIssue(item.issue._id); } catch (requestError) { setError(getErrorMessage(requestError, "Unable to open notification.")); } }} className="w-full text-left"><div className="flex items-start justify-between gap-2"><p className="text-sm font-semibold text-slate-900">{item.title}</p>{!item.readAt && <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-emerald-600" />}</div><p className="mt-1 text-sm text-slate-600">{item.message}</p><p className="mt-1 text-xs text-slate-400">{formatDate(item.createdAt)}</p></button></li>)}</ul> : <p className="mt-3 text-sm text-slate-500">No notifications yet. Updates to your reports will appear here.</p>}</div>}
             </div>
             <button
               type="button"
