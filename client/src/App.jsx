@@ -330,7 +330,7 @@ function IssueDetailsModal({ issue, onClose }) {
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto bg-slate-950/50 p-4"
+      className="fixed inset-0 z-[1000] flex items-center justify-center overflow-y-auto bg-slate-950/50 p-4"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
