@@ -34,11 +34,11 @@ a { color: inherit; text-decoration: none; }
 .bg-emerald-800 { background-color: #173a5e !important; }
 .bg-emerald-600 { background-color: #2f628f !important; }
 .bg-emerald-500 { background-color: #2f628f !important; }
-.hover\\:bg-emerald-800:hover { background-color: #173a5e !important; }
-.hover\\:bg-emerald-700:hover { background-color: #173a5e !important; }
+[class~="hover:bg-emerald-800"]:hover { background-color: #173a5e !important; }
+[class~="hover:bg-emerald-700"]:hover { background-color: #173a5e !important; }
 .text-emerald-700 { color: #244f78 !important; }
 .text-emerald-800 { color: #173a5e !important; }
-.border-emerald-500:focus, .focus\\:border-emerald-500:focus { border-color: #2f628f !important; }
+[class~="focus:border-emerald-500"]:focus { border-color: #2f628f !important; }
 
 input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible, a:focus-visible { outline: 2px solid #356d9e; outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; } }
