@@ -1,43 +1,44 @@
 @import "tailwindcss";
 
 :root {
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system,
-    BlinkMacSystemFont, "Segoe UI", sans-serif;
-  color: #172033;
-  background: #f5f7fb;
+  font-family: "Segoe UI", Arial, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  color: #1f2937;
+  background: #f3f5f7;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-* {
-  box-sizing: border-box;
-}
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; min-height: 100vh; background: #f3f5f7; }
+button, input, select, textarea { font: inherit; }
+button { cursor: pointer; }
+a { color: inherit; text-decoration: none; }
+::selection { background: #dbeafe; color: #1e3a5f; }
 
-body {
-  margin: 0;
-  min-width: 320px;
-  min-height: 100vh;
-}
+/* CivicPulse public-service visual system: restrained, accessible and information-first. */
+.public-service-strip { background: #173a5e; color: #f8fafc; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.portal-intro { border-left: 4px solid #244f78; box-shadow: 0 1px 2px rgb(15 23 42 / 4%); }
+.portal-intro h2 { color: #173a5e; letter-spacing: -.025em; }
 
-button,
-input,
-select,
-textarea {
-  font: inherit;
-}
+/* Reduce the overly rounded, floating-card appearance in favor of a formal portal UI. */
+.rounded-3xl { border-radius: .75rem !important; }
+.rounded-2xl { border-radius: .625rem !important; }
+.rounded-xl { border-radius: .45rem !important; }
+.shadow-sm { box-shadow: 0 1px 2px rgb(15 23 42 / 5%) !important; }
+.shadow-md, .shadow-lg, .shadow-xl, .shadow-2xl { box-shadow: 0 8px 24px rgb(15 23 42 / 12%) !important; }
 
-button {
-  cursor: pointer;
-}
+/* Consistent institutional blue for primary actions and focus states. */
+.bg-emerald-700 { background-color: #244f78 !important; }
+.bg-emerald-800 { background-color: #173a5e !important; }
+.bg-emerald-600 { background-color: #2f628f !important; }
+.bg-emerald-500 { background-color: #2f628f !important; }
+.hover\\:bg-emerald-800:hover { background-color: #173a5e !important; }
+.hover\\:bg-emerald-700:hover { background-color: #173a5e !important; }
+.text-emerald-700 { color: #244f78 !important; }
+.text-emerald-800 { color: #173a5e !important; }
+.border-emerald-500:focus, .focus\\:border-emerald-500:focus { border-color: #2f628f !important; }
 
-a {
-  color: inherit;
-  text-decoration: none;
-}
-
-::selection {
-  background: #c7f9e9;
-  color: #064e3b;
-}
+input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible, a:focus-visible { outline: 2px solid #356d9e; outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; } }
