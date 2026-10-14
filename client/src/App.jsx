@@ -66,6 +66,34 @@ function formatDate(date) {
     : parsed.toLocaleString();
 }
 
+function formatSlaRemaining(milliseconds) {
+  const hours = Math.ceil(Math.abs(milliseconds || 0) / (60 * 60 * 1000));
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  const remainingHours = hours % 24;
+  return remainingHours ? `${days}d ${remainingHours}h` : `${days}d`;
+}
+
+function SlaBadge({ issue }) {
+  if (!issue.slaStatus) return null;
+  const styles = {
+    "on-track": "bg-emerald-50 text-emerald-700 ring-emerald-200",
+    overdue: "bg-red-50 text-red-700 ring-red-200",
+    met: "bg-emerald-50 text-emerald-700 ring-emerald-200",
+    breached: "bg-orange-50 text-orange-700 ring-orange-200",
+  };
+  const label = issue.slaStatus === "on-track"
+    ? `Due in ${formatSlaRemaining(issue.slaRemainingMs)}`
+    : issue.slaStatus === "overdue"
+      ? `Overdue by ${formatSlaRemaining(issue.slaRemainingMs)}`
+      : issue.slaStatus === "met" ? "SLA met" : "SLA breached";
+  return (
+    <span title={`SLA deadline: ${formatDate(issue.slaDueAt)} · Target: ${issue.slaTargetHours} hours`} className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ring-1 ring-inset ${styles[issue.slaStatus] || styles["on-track"]}`}>
+      <Clock3 size={13} className="mr-1" />{label}
+    </span>
+  );
+}
+
 function formatStatus(status = "reported") {
   return status
     .split("-")
@@ -199,6 +227,7 @@ function IssueCard({ issue, admin, assignees, onAssign, onUpdateStatus, onView }
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <PriorityBadge priority={issue.priority} />
+        <SlaBadge issue={issue} />
       </div>
 
       <div className="mt-4 space-y-2 text-sm text-slate-500">
@@ -1126,6 +1155,7 @@ export default function App() {
       inProgress: issues.filter((issue) => issue.status === "in-progress")
         .length,
       resolved: issues.filter((issue) => issue.status === "resolved").length,
+      overdue: issues.filter((issue) => issue.slaStatus === "overdue").length,
     }),
     [issues]
   );
@@ -1259,7 +1289,7 @@ export default function App() {
           </div>
         )}
 
-        <section className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <section className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
           <StatCard
             label="Total issues"
             value={stats.total}
@@ -1283,6 +1313,12 @@ export default function App() {
             value={stats.resolved}
             icon={CheckCircle2}
             description="Successfully resolved"
+          />
+          <StatCard
+            label="SLA overdue"
+            value={stats.overdue}
+            icon={Clock3}
+            description="Open issues past their target deadline"
           />
         </section>
 
