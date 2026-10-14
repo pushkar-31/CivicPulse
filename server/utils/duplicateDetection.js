@@ -1,281 +1,106 @@
-
-import mongoose from "mongoose";
 import Issue from "../models/Issue.js";
-import { findSimilarIssues } from "../utils/duplicateDetection.js";
 
-export const createIssue = async (req, res, next) => {
-  try {
-    const {
-      title,
-      description,
-      category,
-      priority,
-      location,
-      imageUrl,
-    } = req.body;
+const normalizeText = (value = "") =>
+  value
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 
-    if (
-      !title?.trim() ||
-      !description?.trim() ||
-      !category ||
-      !location?.address?.trim()
-    ) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Title, description, category, and location address are required.",
-      });
-    }
+const getTokens = (value) =>
+  new Set(normalizeText(value).split(" ").filter(Boolean));
 
-    // Validate coordinates when provided.
-    if (location.coordinates !== undefined) {
-      const coordinates = location.coordinates;
+const calculateSimilarity = (first, second) => {
+  const a = getTokens(first);
+  const b = getTokens(second);
 
-      if (
-        !Array.isArray(coordinates) ||
-        coordinates.length !== 2 ||
-        !coordinates.every(
-          (coordinate) =>
-            typeof coordinate === "number" &&
-            Number.isFinite(coordinate)
-        ) ||
-        coordinates[0] < -180 ||
-        coordinates[0] > 180 ||
-        coordinates[1] < -90 ||
-        coordinates[1] > 90
-      ) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "Coordinates must be [longitude, latitude] with valid values.",
-        });
-      }
-    }
+  if (a.size === 0 || b.size === 0) return 0;
 
-    // Find similar open issues before creating a new issue.
-    const similarIssues = await findSimilarIssues({
-      title: title.trim(),
-      description: description.trim(),
-      category,
-      coordinates: location.coordinates,
-    });
-
-    if (similarIssues.length > 0) {
-      return res.status(200).json({
-        success: true,
-        duplicateWarning: true,
-        message: "Similar open issues were found nearby.",
-        similarIssues,
-      });
-    }
-
-    const issue = await Issue.create({
-      title: title.trim(),
-      description: description.trim(),
-      category,
-      priority: priority || "medium",
-      location: {
-        address: location.address.trim(),
-        ...(Array.isArray(location.coordinates)
-          ? { coordinates: location.coordinates }
-          : {}),
-      },
-      imageUrl: imageUrl || "",
-      reportedBy: req.user._id,
-      status: "reported",
-      statusHistory: [
-        {
-          status: "reported",
-          changedBy: req.user._id,
-          note: "Issue reported",
-          changedAt: new Date(),
-        },
-      ],
-    });
-
-    return res.status(201).json({
-      success: true,
-      message: "Issue reported successfully.",
-      issue,
-    });
-  } catch (error) {
-    next(error);
+  let intersection = 0;
+  for (const token of a) {
+    if (b.has(token)) intersection += 1;
   }
+
+  const union = new Set([...a, ...b]).size;
+  return union ? intersection / union : 0;
 };
 
-export const getIssues = async (req, res, next) => {
-  try {
-    const {
-      category,
-      status,
-      mine,
-      page = 1,
-      limit = 10,
-    } = req.query;
+const hasValidCoordinates = (coordinates) =>
+  Array.isArray(coordinates) &&
+  coordinates.length === 2 &&
+  coordinates.every(
+    (coordinate) =>
+      typeof coordinate === "number" && Number.isFinite(coordinate)
+  ) &&
+  coordinates[0] >= -180 &&
+  coordinates[0] <= 180 &&
+  coordinates[1] >= -90 &&
+  coordinates[1] <= 90;
 
-    const filter = {};
-
-    if (category) filter.category = category;
-    if (status) filter.status = status;
-
-    if (mine === "true") {
-      filter.reportedBy = req.user._id;
-    }
-
-    const pageNumber = Math.max(1, Number.parseInt(page, 10) || 1);
-    const pageSize = Math.min(
-      100,
-      Math.max(1, Number.parseInt(limit, 10) || 10)
-    );
-
-    const [issues, total] = await Promise.all([
-      Issue.find(filter)
-        .populate("reportedBy", "name email")
-        .populate("assignedTo", "name email")
-        .sort({ createdAt: -1 })
-        .skip((pageNumber - 1) * pageSize)
-        .limit(pageSize)
-        .lean(),
-      Issue.countDocuments(filter),
-    ]);
-
-    return res.status(200).json({
-      success: true,
-      issues,
-      pagination: {
-        total,
-        page: pageNumber,
-        limit: pageSize,
-        totalPages: Math.ceil(total / pageSize),
-      },
-    });
-  } catch (error) {
-    next(error);
+const isNearby = (first, second, radiusMeters = 100) => {
+  if (!hasValidCoordinates(first) || !hasValidCoordinates(second)) {
+    return false;
   }
+
+  const [lon1, lat1] = first;
+  const [lon2, lat2] = second;
+  const toRadians = (degrees) => (degrees * Math.PI) / 180;
+  const earthRadiusMeters = 6371000;
+
+  const dLat = toRadians(lat2 - lat1);
+  const dLon = toRadians(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRadians(lat1)) *
+      Math.cos(toRadians(lat2)) *
+      Math.sin(dLon / 2) ** 2;
+
+  const safeA = Math.min(1, Math.max(0, a));
+  const distance =
+    2 *
+    earthRadiusMeters *
+    Math.atan2(Math.sqrt(safeA), Math.sqrt(1 - safeA));
+
+  return distance <= radiusMeters;
 };
 
-export const getIssueById = async (req, res, next) => {
-  try {
-    const { id } = req.params;
+export const findSimilarIssues = async ({
+  title,
+  description,
+  category,
+  coordinates,
+}) => {
+  const existingIssues = await Issue.find({
+    category,
+    status: { $in: ["reported", "in-progress"] },
+  })
+    .select(
+      "title description category status location.address location.coordinates createdAt"
+    )
+    .sort({ createdAt: -1 })
+    .limit(200)
+    .lean();
 
-    if (!mongoose.isValidObjectId(id)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid issue ID.",
-      });
-    }
+  const newText = `${title} ${description}`;
 
-    const issue = await Issue.findById(id)
-      .populate("reportedBy", "name email")
-      .populate("assignedTo", "name email")
-      .populate("statusHistory.changedBy", "name role");
+  return existingIssues
+    .map((issue) => {
+      const existingText = `${issue.title} ${issue.description}`;
+      const similarity = calculateSimilarity(newText, existingText);
+      const nearby = isNearby(coordinates, issue.location?.coordinates);
 
-    if (!issue) {
-      return res.status(404).json({
-        success: false,
-        message: "Issue not found.",
-      });
-    }
-
-    // Citizens may only view their own issues; admins may view all issues.
-    if (
-      req.user.role !== "admin" &&
-      issue.reportedBy._id.toString() !== req.user._id.toString()
-    ) {
-      return res.status(403).json({
-        success: false,
-        message: "You are not authorized to view this issue.",
-      });
-    }
-
-    return res.status(200).json({
-      success: true,
-      issue,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-export const updateIssueStatus = async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const { status, note, resolutionNote, resolutionImageUrl } = req.body;
-
-    if (!mongoose.isValidObjectId(id)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid issue ID.",
-      });
-    }
-
-    if (
-      !["reported", "in-progress", "resolved", "rejected"].includes(status)
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid issue status.",
-      });
-    }
-
-    const issue = await Issue.findById(id);
-
-    if (!issue) {
-      return res.status(404).json({
-        success: false,
-        message: "Issue not found.",
-      });
-    }
-
-    const finalResolutionNote = resolutionNote || note || "";
-
-    if (status === "resolved" && !finalResolutionNote.trim()) {
-      return res.status(400).json({
-        success: false,
-        message: "A resolution note is required to resolve an issue.",
-      });
-    }
-
-    issue.status = status;
-
-    if (status === "resolved") {
-      issue.resolutionNote = finalResolutionNote.trim();
-
-      if (resolutionImageUrl !== undefined) {
-        if (
-          typeof resolutionImageUrl !== "string" ||
-          !resolutionImageUrl.startsWith("https://")
-        ) {
-          return res.status(400).json({
-            success: false,
-            message: "A valid resolution image URL is required.",
-          });
-        }
-
-        issue.resolutionImageUrl = resolutionImageUrl;
-      }
-    }
-
-    issue.statusHistory.push({
-      status,
-      changedBy: req.user._id,
-      note: finalResolutionNote.trim() || `Status changed to ${status}`,
-      changedAt: new Date(),
-    });
-
-    await issue.save();
-
-    const updatedIssue = await Issue.findById(issue._id)
-      .populate("reportedBy", "name email")
-      .populate("assignedTo", "name email")
-      .populate("statusHistory.changedBy", "name role");
-
-    return res.status(200).json({
-      success: true,
-      message: "Issue status updated successfully.",
-      issue: updatedIssue,
-    });
-  } catch (error) {
-    next(error);
-  }
+      return { issue, similarity, nearby };
+    })
+    .filter(({ similarity, nearby }) => nearby && similarity >= 0.35)
+    .slice(0, 5)
+    .map(({ issue, similarity, nearby }) => ({
+      _id: issue._id,
+      title: issue.title,
+      category: issue.category,
+      status: issue.status,
+      address: issue.location?.address || "",
+      createdAt: issue.createdAt,
+      similarity: Math.round(similarity * 100),
+      nearby,
+    }));
 };
