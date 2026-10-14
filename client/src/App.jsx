@@ -1,6 +1,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import axios from "axios";
+import IssueMap from "./components/IssueMap";
 import {
   Activity,
   AlertCircle,
@@ -1207,6 +1208,13 @@ export default function App() {
           />
         </section>
 
+        <section className="mt-8">
+          <IssueMap
+            issues={issues}
+            onViewIssue={viewIssue}
+          />
+        </section>
+
         <section className="mt-10">
           <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
             <div>
@@ -1572,6 +1580,37 @@ export default function App() {
                     </button>
                   </div>
                 )}
+              </div>
+
+              <div>
+                <p className="text-sm font-semibold text-slate-700">
+                  Choose location on map{" "}
+                  <span className="font-normal text-slate-400">(optional)</span>
+                </p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  Click the map to fill in the coordinates automatically. You can still enter them manually below.
+                </p>
+                <div className="mt-3">
+                  <IssueMap
+                    selectionMode
+                    issues={[]}
+                    selectedCoordinates={
+                      form.longitude.trim() !== "" && form.latitude.trim() !== ""
+                        ? {
+                            longitude: Number(form.longitude),
+                            latitude: Number(form.latitude),
+                          }
+                        : null
+                    }
+                    onSelectLocation={({ longitude, latitude }) => {
+                      setForm((current) => ({
+                        ...current,
+                        longitude: longitude.toFixed(6),
+                        latitude: latitude.toFixed(6),
+                      }));
+                    }}
+                  />
+                </div>
               </div>
 
               <div>
