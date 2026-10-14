@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import Issue from "../models/Issue.js";
 import User from "../models/User.js";
+import Notification from "../models/Notification.js";
 import { findSimilarIssues } from "../utils/duplicateDetection.js";
 
 export const createIssue = async (req, res, next) => {
@@ -194,6 +195,16 @@ export const updateIssueStatus = async (req, res, next) => {
 
     await issue.save();
 
+    if (issue.reportedBy && issue.reportedBy.toString() !== req.user._id.toString()) {
+      await Notification.create({
+        recipient: issue.reportedBy,
+        issue: issue._id,
+        type: status === "resolved" ? "resolution" : "status",
+        title: status === "resolved" ? "Issue resolved" : "Issue status updated",
+        message: `"${issue.title}" is now ${status.replace("-", " ")}.${finalResolutionNote.trim() ? ` ${finalResolutionNote.trim()}` : ""}`,
+      });
+    }
+
     const updatedIssue = await Issue.findById(issue._id)
       .populate("reportedBy", "name email")
       .populate("assignedTo", "name email")
@@ -248,7 +259,26 @@ export const assignIssue = async (req, res, next) => {
       }
     }
 
+    const previousAssignee = issue.assignedTo?.toString();
     issue.assignedTo = assignedTo || null;
+    if (assignedTo && assignedTo !== previousAssignee && assignedTo !== req.user._id.toString()) {
+      await Notification.create({
+        recipient: assignedTo,
+        issue: issue._id,
+        type: "assignment",
+        title: "Issue assigned to you",
+        message: `You have been assigned "${issue.title}".`,
+      });
+    }
+    if (issue.reportedBy && issue.reportedBy.toString() !== req.user._id.toString()) {
+      await Notification.create({
+        recipient: issue.reportedBy,
+        issue: issue._id,
+        type: "assignment",
+        title: assignedTo ? "Issue assignment updated" : "Issue unassigned",
+        message: assignedTo ? `"${issue.title}" has been assigned to a team member.` : `The assignment for "${issue.title}" has been removed.`,
+      });
+    }
     issue.statusHistory.push({
       status: issue.status,
       changedBy: req.user._id,
