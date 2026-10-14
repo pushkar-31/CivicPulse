@@ -157,7 +157,7 @@ export const getIssueById = async (req, res, next) => {
 export const updateIssueStatus = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { status, note, resolutionNote } = req.body;
+    const { status, note, resolutionNote, resolutionImageUrl } = req.body;
 
     if (!mongoose.isValidObjectId(id)) {
       return res.status(400).json({
@@ -197,6 +197,20 @@ export const updateIssueStatus = async (req, res, next) => {
 
     if (status === "resolved") {
       issue.resolutionNote = finalResolutionNote.trim();
+
+      if (resolutionImageUrl !== undefined) {
+        if (
+          typeof resolutionImageUrl !== "string" ||
+          !resolutionImageUrl.startsWith("https://")
+        ) {
+          return res.status(400).json({
+            success: false,
+            message: "A valid resolution image URL is required.",
+          });
+        }
+
+        issue.resolutionImageUrl = resolutionImageUrl;
+      }
     }
 
     issue.statusHistory.push({

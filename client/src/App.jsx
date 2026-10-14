@@ -132,6 +132,8 @@ function IssueCard({ issue, admin, onUpdateStatus, onView }) {
   const [resolutionNote, setResolutionNote] = useState(
     issue.resolutionNote || ""
   );
+  const [resolutionImageFile, setResolutionImageFile] = useState(null);
+  const [resolutionImagePreview, setResolutionImagePreview] = useState("");
   const [updating, setUpdating] = useState(false);
   const [updateError, setUpdateError] = useState("");
 
@@ -151,7 +153,12 @@ function IssueCard({ issue, admin, onUpdateStatus, onView }) {
     setUpdating(true);
 
     try {
-      await onUpdateStatus(issue._id, nextStatus, resolutionNote.trim());
+      await onUpdateStatus(
+        issue._id,
+        nextStatus,
+        resolutionNote.trim(),
+        resolutionImageFile
+      );
     } catch (error) {
       setUpdateError(error.message || "Unable to update issue.");
     } finally {
@@ -249,6 +256,38 @@ function IssueCard({ issue, admin, onUpdateStatus, onView }) {
                 placeholder="Explain how the issue was resolved..."
                 className="mt-1 w-full resize-y rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-emerald-500"
               />
+              <label className="mt-4 block text-xs font-semibold text-slate-600">
+                Resolution photo (optional)
+              </label>
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (!file) return;
+                  if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+                    setUpdateError("Choose a JPEG, PNG, or WebP image.");
+                    event.target.value = "";
+                    return;
+                  }
+                  if (file.size > 5 * 1024 * 1024) {
+                    setUpdateError("Image must be 5 MB or smaller.");
+                    event.target.value = "";
+                    return;
+                  }
+                  setUpdateError("");
+                  setResolutionImageFile(file);
+                  setResolutionImagePreview(URL.createObjectURL(file));
+                }}
+                className="mt-2 block w-full rounded-xl border border-slate-200 p-3 text-sm"
+              />
+              {resolutionImagePreview && (
+                <img
+                  src={resolutionImagePreview}
+                  alt="Resolution photo preview"
+                  className="mt-3 max-h-48 w-full rounded-xl border border-slate-200 object-contain"
+                />
+              )}
             </>
           )}
 
@@ -910,17 +949,41 @@ export default function App() {
     }
   }
 
-  async function updateIssueStatus(issueId, status, resolutionNote) {
+  async function updateIssueStatus(
+    issueId,
+    status,
+    resolutionNote,
+    resolutionImageFile
+  ) {
     setError("");
     setSuccess("");
 
-    const payload = {
-      status,
-      ...(resolutionNote ? { resolutionNote } : {}),
-      ...(status === "resolved" ? { note: resolutionNote } : {}),
-    };
-
     try {
+      let resolutionImageUrl = "";
+
+      if (status === "resolved" && resolutionImageFile) {
+        const uploadData = new FormData();
+        uploadData.append("image", resolutionImageFile);
+
+        const uploadResponse = await api.post("/api/uploads", uploadData, {
+          headers: {
+            ...authHeaders,
+            "Content-Type": undefined,
+          },
+        });
+
+        resolutionImageUrl = uploadResponse.data.imageUrl;
+        if (!resolutionImageUrl) {
+          throw new Error("Resolution photo upload failed.");
+        }
+      }
+
+      const payload = {
+        status,
+        ...(resolutionNote ? { resolutionNote, note: resolutionNote } : {}),
+        ...(resolutionImageUrl ? { resolutionImageUrl } : {}),
+      };
+
       await api.patch(`/api/issues/${issueId}/status`, payload, {
         headers: authHeaders,
       });
@@ -1545,4 +1608,3 @@ export default function App() {
     </div>
   );
 }
-
