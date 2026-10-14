@@ -19,8 +19,10 @@ router.route("/")
   .post(createIssue)
   .get(getIssues);
 
+router.get("/assignees", requireAdmin, getIssueAssignees);
 router.get("/:id", getIssueById);
 
 router.patch("/:id/status", requireAdmin, updateIssueStatus);
+router.patch("/:id/assign", requireAdmin, assignIssue);
 
 export default router;
